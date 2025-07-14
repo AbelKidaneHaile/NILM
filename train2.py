@@ -23,7 +23,7 @@ from sklearn.metrics import multilabel_confusion_matrix, classification_report
 DATA_DIR = "dataset/house_1"
 TRAIN_FILE = os.path.join(DATA_DIR, "train_data.csv")
 TEST_FILE = os.path.join(DATA_DIR, "test_data.csv")
-MODEL_SAVE_PATH = "models/eco_multilabel_model.pth"
+MODEL_SAVE_PATH = "models/eco_multilabel_model_e20_base.pth"
 
 # Columns in dataset
 FEATURE_COLS = [
@@ -387,7 +387,7 @@ def main():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    num_epochs = 10
+    num_epochs = 20
 
     # To keep track for plots
     history = {
@@ -442,20 +442,23 @@ def main():
     print(f"\nModel saved to {MODEL_SAVE_PATH}")
 
     # Plotting function
-    def plot_metric(history, metric_name):
+    def plot_metric(history, metric_name, MODEL_SAVE_PATH):
         plt.figure(figsize=(8, 5))
         plt.plot(history[f"train_{metric_name}"], label=f"Train {metric_name}")
         plt.plot(history[f"test_{metric_name}"], label=f"Test {metric_name}")
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
         plt.xlabel("Epoch")
         plt.ylabel(metric_name)
         plt.title(f"{metric_name} over epochs")
         plt.legend()
         plt.grid(True)
-        plt.show()
+        make_dir_if_not_exists(MODEL_SAVE_PATH[:-4])
+        plt.savefig(f"{MODEL_SAVE_PATH[:-4]}/{metric_name}.png", bbox_inches='tight')
 
     # Plot all metrics
     for metric in ["loss", "f1", "recall", "precision", "acc", "map"]:
-        plot_metric(history, metric)
+        plot_metric(history, metric, MODEL_SAVE_PATH)
 
 
 if __name__ == "__main__":
