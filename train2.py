@@ -16,11 +16,13 @@ from sklearn.preprocessing import StandardScaler
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from sklearn.metrics import f1_score, recall_score, precision_score, accuracy_score, average_precision_score
+from sklearn.metrics import multilabel_confusion_matrix, classification_report
 
 # --- Configurations ---
-DATA_DIR = "house_1_chunks"
-TRAIN_FILE = os.path.join(DATA_DIR, "train.csv")
-TEST_FILE = os.path.join(DATA_DIR, "test.csv")
+DATA_DIR = "dataset/house_1"
+TRAIN_FILE = os.path.join(DATA_DIR, "train_data.csv")
+TEST_FILE = os.path.join(DATA_DIR, "test_data.csv")
 MODEL_SAVE_PATH = "models/eco_multilabel_model.pth"
 
 # Columns in dataset
@@ -106,20 +108,163 @@ class MultiLabelClassifier(nn.Module):
 
 
 # --- Metrics helpers ---
+# def calculate_metrics(y_true, y_pred, threshold=0.5):
+#     y_pred_bin = (y_pred >= threshold).astype(int)
+#     y_true = np.asarray(y_true).astype(int)
+#     print("y_true shape:", y_true.shape, y_true.dtype)
+#     print("y_pred_bin shape:", y_pred_bin.shape, y_pred_bin.dtype)
+#     f1 = f1_score(y_true, y_pred_bin, average="samples", zero_division=0)
+#     recall = recall_score(y_true, y_pred_bin, average="samples", zero_division=0)
+#     precision = precision_score(y_true, y_pred_bin, average="samples", zero_division=0)
+#     accuracy = accuracy_score(y_true, y_pred_bin)
+
+#     # mAP calculation: mean average precision over labels (use precision/recall curve)
+#     # Here we do a simplified version: average of precisions
+#     mAP = precision  # simplified proxy
+
+#     return f1, recall, precision, accuracy, mAP, y_pred_bin
 def calculate_metrics(y_true, y_pred, threshold=0.5):
-    y_pred_bin = (y_pred >= threshold).astype(int)
-
-    f1 = f1_score(y_true, y_pred_bin, average="macro", zero_division=0)
-    recall = recall_score(y_true, y_pred_bin, average="macro", zero_division=0)
-    precision = precision_score(y_true, y_pred_bin, average="macro", zero_division=0)
-    accuracy = accuracy_score(y_true, y_pred_bin)
-
-    # mAP calculation: mean average precision over labels (use precision/recall curve)
-    # Here we do a simplified version: average of precisions
-    mAP = precision  # simplified proxy
-
+    """
+    Calculate metrics for multilabel classification
+    
+    Args:
+        y_true: Ground truth labels (n_samples, n_labels)
+        y_pred: Predicted probabilities (n_samples, n_labels)
+        threshold: Classification threshold (default: 0.5)
+    
+    Returns:
+        f1, recall, precision, accuracy, mAP, y_pred_bin
+    """
+    # Convert to numpy arrays and ensure proper format
+    y_true = np.asarray(y_true, dtype=np.int32)
+    y_pred = np.asarray(y_pred, dtype=np.float32)
+    y_pred_bin = (y_pred >= threshold).astype(np.int32)
+    
+    # Ensure 2D shape
+    if y_true.ndim == 1:
+        y_true = y_true.reshape(-1, 1)
+    if y_pred_bin.ndim == 1:
+        y_pred_bin = y_pred_bin.reshape(-1, 1)
+    if y_pred.ndim == 1:
+        y_pred = y_pred.reshape(-1, 1)
+    
+    # print("y_true shape:", y_true.shape, y_true.dtype)
+    # print("y_pred_bin shape:", y_pred_bin.shape, y_pred_bin.dtype)
+    # print("y_true unique values:", np.unique(y_true))
+    # print("y_pred_bin unique values:", np.unique(y_pred_bin))
+    
+    # Calculate metrics manually to avoid sklearn format detection issues
+    n_samples, n_labels = y_true.shape
+    
+    # Initialize metric arrays
+    f1_scores = []
+    recall_scores = []
+    precision_scores = []
+    
+    # Calculate metrics for each label separately
+    for label_idx in range(n_labels):
+        y_true_label = y_true[:, label_idx]
+        y_pred_label = y_pred_bin[:, label_idx]
+        
+        # Calculate TP, FP, FN for this label
+        tp = np.sum((y_true_label == 1) & (y_pred_label == 1))
+        fp = np.sum((y_true_label == 0) & (y_pred_label == 1))
+        fn = np.sum((y_true_label == 1) & (y_pred_label == 0))
+        
+        # Calculate precision, recall, f1 for this label
+        precision_label = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall_label = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1_label = 2 * (precision_label * recall_label) / (precision_label + recall_label) if (precision_label + recall_label) > 0 else 0
+        
+        f1_scores.append(f1_label)
+        recall_scores.append(recall_label)
+        precision_scores.append(precision_label)
+    
+    # Average across labels (macro averaging)
+    f1 = np.mean(f1_scores)
+    recall = np.mean(recall_scores)
+    precision = np.mean(precision_scores)
+    
+    # Calculate subset accuracy (exact match accuracy for multilabel)
+    accuracy = np.mean(np.all(y_true == y_pred_bin, axis=1))
+    
+    # Calculate mAP manually
+    mAP_scores = []
+    for label_idx in range(n_labels):
+        y_true_label = y_true[:, label_idx]
+        y_pred_label = y_pred[:, label_idx]
+        
+        # Sort by prediction confidence
+        sorted_indices = np.argsort(y_pred_label)[::-1]
+        y_true_sorted = y_true_label[sorted_indices]
+        
+        # Calculate average precision for this label
+        if np.sum(y_true_sorted) == 0:
+            ap = 0.0
+        else:
+            precisions = []
+            for k in range(1, len(y_true_sorted) + 1):
+                precision_at_k = np.sum(y_true_sorted[:k]) / k
+                if y_true_sorted[k-1] == 1:  # Only consider positions where true label is 1
+                    precisions.append(precision_at_k)
+            ap = np.mean(precisions) if precisions else 0.0
+        
+        mAP_scores.append(ap)
+    
+    mAP = np.mean(mAP_scores)
+    
     return f1, recall, precision, accuracy, mAP, y_pred_bin
 
+
+def calculate_metrics_detailed(y_true, y_pred, threshold=0.5, label_names=None):
+    """
+    Calculate detailed metrics for multilabel classification including per-label metrics
+    
+    Args:
+        y_true: Ground truth labels (n_samples, n_labels)
+        y_pred: Predicted probabilities (n_samples, n_labels)
+        threshold: Classification threshold (default: 0.5)
+        label_names: List of label names for reporting (optional)
+    
+    Returns:
+        Dictionary with various metrics
+    """
+    y_pred_bin = (y_pred >= threshold).astype(int)
+    y_true = np.asarray(y_true).astype(int)
+    
+    # Calculate metrics with different averaging strategies
+    metrics = {
+        'f1_samples': f1_score(y_true, y_pred_bin, average="samples", zero_division=0),
+        'f1_macro': f1_score(y_true, y_pred_bin, average="macro", zero_division=0),
+        'f1_micro': f1_score(y_true, y_pred_bin, average="micro", zero_division=0),
+        'f1_weighted': f1_score(y_true, y_pred_bin, average="weighted", zero_division=0),
+        
+        'recall_samples': recall_score(y_true, y_pred_bin, average="samples", zero_division=0),
+        'recall_macro': recall_score(y_true, y_pred_bin, average="macro", zero_division=0),
+        'recall_micro': recall_score(y_true, y_pred_bin, average="micro", zero_division=0),
+        'recall_weighted': recall_score(y_true, y_pred_bin, average="weighted", zero_division=0),
+        
+        'precision_samples': precision_score(y_true, y_pred_bin, average="samples", zero_division=0),
+        'precision_macro': precision_score(y_true, y_pred_bin, average="macro", zero_division=0),
+        'precision_micro': precision_score(y_true, y_pred_bin, average="micro", zero_division=0),
+        'precision_weighted': precision_score(y_true, y_pred_bin, average="weighted", zero_division=0),
+        
+        'accuracy': accuracy_score(y_true, y_pred_bin),
+        'mAP': average_precision_score(y_true, y_pred, average="samples"),
+    }
+    
+    # Per-label metrics
+    f1_per_label = f1_score(y_true, y_pred_bin, average=None, zero_division=0)
+    recall_per_label = recall_score(y_true, y_pred_bin, average=None, zero_division=0)
+    precision_per_label = precision_score(y_true, y_pred_bin, average=None, zero_division=0)
+    
+    if label_names:
+        for i, label in enumerate(label_names):
+            metrics[f'f1_{label}'] = f1_per_label[i]
+            metrics[f'recall_{label}'] = recall_per_label[i]
+            metrics[f'precision_{label}'] = precision_per_label[i]
+    
+    return metrics, y_pred_bin
 
 # --- Train & Test functions ---
 def train_epoch(model, dataloader, criterion, optimizer):
