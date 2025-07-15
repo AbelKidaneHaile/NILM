@@ -24,7 +24,7 @@ import src
 DATA_DIR = "dataset/house_1"
 TRAIN_FILE = os.path.join(DATA_DIR, "train_data.csv")
 TEST_FILE = os.path.join(DATA_DIR, "test_data.csv")
-NO_EPOCHS = 30  # Number of epochs for training
+NO_EPOCHS = 100  # Number of epochs for training
 MODEL_SAVE_PATH = f"models/eco_multilabel_model_e{NO_EPOCHS}.pth"
 
 
@@ -178,18 +178,7 @@ def calculate_metrics(y_true, y_pred, threshold=0.5):
 
 
 def calculate_metrics_detailed(y_true, y_pred, threshold=0.5, label_names=None):
-    """
-    Calculate detailed metrics for multilabel classification including per-label metrics
 
-    Args:
-        y_true: Ground truth labels (n_samples, n_labels)
-        y_pred: Predicted probabilities (n_samples, n_labels)
-        threshold: Classification threshold (default: 0.5)
-        label_names: List of label names for reporting (optional)
-
-    Returns:
-        Dictionary with various metrics
-    """
     y_pred_bin = (y_pred >= threshold).astype(int)
     y_true = np.asarray(y_true).astype(int)
 
@@ -384,8 +373,7 @@ def main():
         plt.figure(figsize=(8, 5))
         plt.plot(history[f"train_{metric_name}"], label=f"Train {metric_name}")
         plt.plot(history[f"test_{metric_name}"], label=f"Test {metric_name}")
-        # plt.xlim(0, 1)
-        # plt.ylim(0, 1)
+
         plt.xlabel("Epoch")
         plt.ylabel(metric_name)
         plt.title(f"{metric_name} over epochs")
