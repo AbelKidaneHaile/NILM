@@ -10,10 +10,22 @@ __pycache__/
 /Dataset
 /preprocess.ipynb 
 /visualize_data.ipynb
+/main.py
+/preprocess.ipynb
+/toppackagesrequirement.py
+/prepare_trainingandtesting.ipynb
+/train.py
+/train2.py
+/formatdataset.py 
+/format_dataset.ipynb
+/analysis.ipynb 
+/train.ipynb 
+/inference.ipynb
 
+/models
 /dataset
 
-
+toppackagesrequirements.py
 # Distribution / packaging
 .Python
 build/
